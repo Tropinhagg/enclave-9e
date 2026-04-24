@@ -185,7 +185,19 @@ document.getElementById('btn-entrar').addEventListener('click', async () => {
   const btn = document.getElementById('btn-entrar');
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
   document.getElementById('login-erro').textContent = '';
-  const { data, error } = await sb.auth.signInWithPassword({ email: apelido + EMAIL_DOMAIN, password: senha });
+
+  // Busca o e-mail real associado ao apelido digitado.
+  // Não construímos mais o e-mail direto do apelido, pois o apelido
+  // pode ter sido alterado depois da criação do usuário — mas o e-mail
+  // em auth.users nunca muda. A função RPC faz o JOIN seguro no servidor.
+  const { data: emailReal, error: rpcError } = await sb.rpc('email_por_apelido', { p_apelido: apelido });
+  if (rpcError || !emailReal) {
+    btn.disabled = false; btn.innerHTML = 'Entrar';
+    document.getElementById('login-erro').textContent = 'Apelido ou senha incorretos.';
+    return;
+  }
+
+  const { data, error } = await sb.auth.signInWithPassword({ email: emailReal, password: senha });
   btn.disabled = false; btn.innerHTML = 'Entrar';
   if (error) { document.getElementById('login-erro').textContent = 'Apelido ou senha incorretos.'; return; }
   app.usuario = data.user;
@@ -201,7 +213,15 @@ document.getElementById('inp-senha').addEventListener('keydown', e => { if (e.ke
 document.getElementById('btn-esqueci').addEventListener('click', async () => {
   const apelido = document.getElementById('inp-apelido').value.trim();
   if (!apelido) { document.getElementById('login-erro').textContent = 'Digite seu apelido primeiro.'; return; }
-  await sb.auth.resetPasswordForEmail(apelido + EMAIL_DOMAIN);
+
+  // Assim como no login, buscamos o e-mail real pelo apelido antes de
+  // chamar resetPasswordForEmail — garantindo que o apelido atualizado
+  // funcione aqui também.
+  const { data: emailReal } = await sb.rpc('email_por_apelido', { p_apelido: apelido });
+  if (emailReal) await sb.auth.resetPasswordForEmail(emailReal);
+
+  // Sempre exibimos a mesma mensagem independente de o apelido existir
+  // ou não — isso evita que alguém use a tela para descobrir apelidos válidos.
   document.getElementById('login-erro').style.color = 'var(--success)';
   document.getElementById('login-erro').textContent = 'Link de redefinição enviado (se o e-mail existir).';
 });
